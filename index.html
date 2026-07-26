@@ -46,6 +46,13 @@
     --ocean-hi:   #1fa0ba;   /* knapp når du hovrer */
     --ocean-bg:   #29b1c7;   /* bakgrunn - lys turkis (toppen) */
     --ocean-bg-2: #0e7284;   /* bakgrunn - dypere turkis (bunnen) */
+
+    /* ---- fargen på havet (video-tinten) ----
+       LETT Å ENDRE: bytt bare disse to. første tallene er R,G,B (fargen),
+       siste tallet er styrken (0 = ingen farge, 1 = helt dekkende).
+       toppen er lysere, bunnen mørkere. */
+    --sea-tint-top:    rgba(41, 177, 199, 0.40);
+    --sea-tint-bottom: rgba(14, 114, 132, 0.58);
   }
 
   /* liten reset så ting oppfører seg likt overalt */
@@ -54,17 +61,37 @@
 
   /* ============================================================
      bakgrunnen (havet)
-     to lag oppå hverandre: øverst en svak havoverflate-tekstur
-     (sea.png, mest gjennomsiktig), og under en turkis gradient.
-     alt midtstilles med flexbox. */
+     en loopende havoverflate-video (sea.mp4) ligger bakerst, med et
+     turkis tint-lag + litt blur oppå så d blir dus og ikke stjeler fokus
+     fra boka. gradienten under er bare en fallback-farge hvis videoen
+     ikke laster. alt midtstilles med flexbox. */
   body{
     font-family:"Georgia","Times New Roman",serif;
-    background:
-      url("sea.png") center / cover no-repeat,
-      radial-gradient(130% 120% at 50% 10%, var(--ocean-bg) 0%, var(--ocean-bg-2) 100%);
+    background: radial-gradient(130% 120% at 50% 10%, var(--ocean-bg) 0%, var(--ocean-bg-2) 100%);
     color:var(--ink);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     min-height:100vh; overflow:hidden;
+  }
+
+  /* bakgrunnsvideoen ligger bakerst (z-index -2) og dekker hele skjermen.
+     vi bruker TO video-lag som veksler: når det ene nærmer seg slutten
+     starter det andre fra begynnelsen og fader inn OPPÅ det gamle - så
+     loopen smelter sammen (morpher) i stedet for å hoppe/hakke. */
+  #sea-bg{ position:fixed; inset:0; z-index:-2; }
+  #sea-bg .sea-v{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover;
+    filter: blur(2px) saturate(1.05);
+    opacity:0; transition: opacity 1.6s linear;   /* <- selve krysstoningen */
+  }
+  #sea-bg .sea-v.show{ opacity:1; }
+  /* turkis tint oppå videoen - demper og gjør d mer ensfarget/rolig.
+     fargen styres av variablene --sea-tint-top / --sea-tint-bottom lengst
+     oppe, så d er lett å teste ulike farger uten å lete i koden. */
+  #sea-tint{
+    position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background: radial-gradient(130% 120% at 50% 10%,
+      var(--sea-tint-top) 0%, var(--sea-tint-bottom) 100%);
   }
 
   /* ============================================================
@@ -228,6 +255,22 @@
 <body>
 
   <!-- ============================================================
+       bakgrunn: havoverflate-video
+       muted + autoplay + loop + playsinline = spiller av automatisk og
+       stille (nettlesere krever "muted" for å tillate autoplay).
+       poster = stillbilde som vises mens videoen laster.
+
+       VIL DU HA HAVLYD SEINERE? legg til under (og en liten knapp som
+       starter den, siden nettlesere ikke tillater lyd av seg selv):
+         <audio id="ocean" src="ocean.mp3" loop></audio>
+       ============================================================ -->
+  <div id="sea-bg">
+    <video class="sea-v" muted playsinline preload="auto" poster="sea-poster.jpg"><source src="sea.mp4" type="video/mp4"></video>
+    <video class="sea-v" muted playsinline preload="auto"><source src="sea.mp4" type="video/mp4"></video>
+  </div>
+  <div id="sea-tint"></div>
+
+  <!-- ============================================================
        selve boka (html)
        hvert ARK er ett fysisk blad med to sider: .face front + .face back.
        sidene er tomt papir nå.
@@ -371,6 +414,38 @@
     if (e.key === 'ArrowRight') flip(true);
     if (e.key === 'ArrowLeft')  flip(false);
   });
+
+  /* ---- bakgrunnsvideo: sømløs loop med to lag som krysstoner ----
+     to like videoer veksler. når den aktive nærmer seg slutten starter
+     den andre fra 0 og fader inn oppå, så overgangen morpher i stedet for
+     å hoppe. begge spiller samtidig gjennom hele krysstoningen.
+     LETT Å ENDRE:
+       RATE = fart (0.6 = roligere, 1 = normal)
+       XF   = lengden på krysstoningen i sekunder
+              (må matche "transition: opacity ...s" i css over) */
+  const RATE = 0.6;
+  const XF   = 1.6;
+  const vids = [...document.querySelectorAll('#sea-bg .sea-v')];
+
+  vids.forEach(v => { v.muted = true; v.playbackRate = RATE; });
+
+  function run(v, other){
+    v.currentTime = 0;
+    v.classList.add('show');                 // det nye laget fader inn
+    if (other) other.classList.remove('show'); // det gamle fader ut under
+    v.play().catch(()=>{});
+
+    // når vi nærmer oss slutten: start det andre laget (ping-pong)
+    const onTick = () => {
+      if (v.duration && v.currentTime >= v.duration - XF * RATE) {
+        v.removeEventListener('timeupdate', onTick);
+        run(other, v);
+      }
+    };
+    v.addEventListener('timeupdate', onTick);
+  }
+
+  if (vids.length === 2) run(vids[0], vids[1]);
 </script>
 </body>
 </html>
